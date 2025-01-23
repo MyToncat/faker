@@ -4,70 +4,70 @@ localized = True
 
 
 class Provider(BaseProvider):
-    city_suffixes: ElementsType = ["Ville"]
-    street_suffixes: ElementsType = ["Street"]
-    city_formats: ElementsType = ("{{first_name}} {{city_suffix}}",)
-    street_name_formats: ElementsType = ("{{last_name}} {{street_suffix}}",)
-    street_address_formats: ElementsType = ("{{building_number}} {{street_name}}",)
-    address_formats: ElementsType = ("{{street_address}} {{postcode}} {{city}}",)
-    building_number_formats: ElementsType = ("##",)
-    postcode_formats: ElementsType = ("#####",)
-    countries: ElementsType = [tz["name"] for tz in date_time.Provider.countries]
+    city_suffixes: ElementsType[str] = ["Ville"]
+    street_suffixes: ElementsType[str] = ["Street"]
+    city_formats: ElementsType[str] = ("{{first_name}} {{city_suffix}}",)
+    street_name_formats: ElementsType[str] = ("{{last_name}} {{street_suffix}}",)
+    street_address_formats: ElementsType[str] = ("{{building_number}} {{street_name}}",)
+    address_formats: ElementsType[str] = ("{{street_address}} {{postcode}} {{city}}",)
+    building_number_formats: ElementsType[str] = ("##",)
+    postcode_formats: ElementsType[str] = ("#####",)
+    countries: ElementsType[str] = [country.name for country in date_time.Provider.countries]
 
     ALPHA_2 = "alpha-2"
     ALPHA_3 = "alpha-3"
 
-    alpha_2_country_codes: ElementsType = [tz["alpha-2-code"] for tz in date_time.Provider.countries]
-    alpha_3_country_codes: ElementsType = [tz["alpha-3-code"] for tz in date_time.Provider.countries]
+    alpha_2_country_codes: ElementsType[str] = [country.alpha_2_code for country in date_time.Provider.countries]
+    alpha_3_country_codes: ElementsType[str] = [country.alpha_3_code for country in date_time.Provider.countries]
 
     def city_suffix(self) -> str:
         """
-        :example 'town'
+        :example: 'town'
         """
         return self.random_element(self.city_suffixes)
 
     def street_suffix(self) -> str:
         """
-        :example 'Avenue'
+        :example: 'Avenue'
         """
         return self.random_element(self.street_suffixes)
 
     def building_number(self) -> str:
         """
-        :example '791'
+        :example: '791'
         """
         return self.numerify(self.random_element(self.building_number_formats))
 
     def city(self) -> str:
         """
-        :example 'Sashabury'
+        :example: 'Sashabury'
         """
         pattern: str = self.random_element(self.city_formats)
         return self.generator.parse(pattern)
 
     def street_name(self) -> str:
         """
-        :example 'Crist Parks'
+        :example: 'Crist Parks'
         """
         pattern: str = self.random_element(self.street_name_formats)
         return self.generator.parse(pattern)
 
     def street_address(self) -> str:
         """
-        :example '791 Crist Parks'
+        :example: '791 Crist Parks'
         """
         pattern: str = self.random_element(self.street_address_formats)
         return self.generator.parse(pattern)
 
     def postcode(self) -> str:
         """
-        :example 86039-9874
+        :example: 86039-9874
         """
         return self.bothify(self.random_element(self.postcode_formats)).upper()
 
     def address(self) -> str:
         """
-        :example '791 Crist Parks, Sashabury, IL 86039-9874'
+        :example: '791 Crist Parks, Sashabury, IL 86039-9874'
         """
         pattern: str = self.random_element(self.address_formats)
         return self.generator.parse(pattern)
@@ -92,7 +92,7 @@ class Provider(BaseProvider):
     def current_country(self) -> str:
         current_country_code = self.current_country_code()
         current_country = [
-            tz["name"] for tz in date_time.Provider.countries if tz["alpha-2-code"] == current_country_code
+            country.name for country in date_time.Provider.countries if country.alpha_2_code == current_country_code
         ]
         if len(current_country) == 1:
             return current_country[0]  # type: ignore
