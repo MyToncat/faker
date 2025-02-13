@@ -103,14 +103,14 @@ class TestFakerProxyClass:
         fake = Faker(locale)
         for locale_name, factory in fake.items():
             assert locale_name in processed_locale
-            assert isinstance(factory, Generator)
+            assert isinstance(factory, (Generator, Faker))
 
     def test_dunder_getitem(self):
         locale = ["de_DE", "en-US", "en-PH", "ja_JP"]
         fake = Faker(locale)
 
         for code in locale:
-            assert isinstance(fake[code], Generator)
+            assert isinstance(fake[code], (Generator, Faker))
 
         with pytest.raises(KeyError):
             fake["en_GB"]
@@ -127,6 +127,21 @@ class TestFakerProxyClass:
             mock_seed.assert_not_called()
             Faker.seed(0)
             mock_seed.assert_called_once_with(0)
+
+    def test_seed_class_locales(self):
+        Faker.seed(2043)
+        count = 5
+        fake = Faker(["en_GB", "fr_FR", "en_IN"])
+        first_list = [fake.name() for _ in range(count)]
+        # We convert the list to a set to remove duplicates and ensure
+        # that we have exactly `count` unique fake values
+        assert len(set(first_list)) == count
+
+        Faker.seed(2043)
+        fake = Faker(["en_GB", "fr_FR", "en_IN"])
+        second_list = [fake.name() for _ in range(count)]
+
+        assert first_list == second_list
 
     def test_seed_instance(self):
         locale = ["de_DE", "en-US", "en-PH", "ja_JP"]
@@ -232,51 +247,48 @@ class TestFakerProxyClass:
                 # So each call to name() accesses the cached mapping twice
                 assert mock_cached_map.call_count == 200
 
-    @patch("faker.proxy.random.choice")
-    @patch("faker.proxy.choices_distribution")
-    def test_multiple_locale_factory_selection_no_weights(self, mock_choices_fn, mock_random_choice):
+    @patch("faker.proxy.Faker._select_factory_choice")
+    @patch("faker.proxy.Faker._select_factory_distribution")
+    def test_multiple_locale_factory_selection_no_weights(self, mock_factory_distribution, mock_factory_choice):
         fake = Faker(["de_DE", "en-US", "en-PH", "ja_JP"])
 
         # There are no distribution weights, so factory selection logic will use `random.choice`
         # if multiple factories have the specified provider method
         with patch("faker.proxy.Faker._select_factory", wraps=fake._select_factory) as mock_select_factory:
             mock_select_factory.assert_not_called()
-            mock_choices_fn.assert_not_called()
-            mock_random_choice.assert_not_called()
+            mock_factory_distribution.assert_not_called()
+            mock_factory_choice.assert_not_called()
 
             # All factories for the listed locales have the `name` provider method
             fake.name()
             mock_select_factory.assert_called_once_with("name")
-            mock_choices_fn.assert_not_called()
-            mock_random_choice.assert_called_once_with(fake.factories)
+            mock_factory_distribution.assert_not_called()
+            mock_factory_choice.assert_called_once_with(fake.factories)
             mock_select_factory.reset_mock()
-            mock_choices_fn.reset_mock()
-            mock_random_choice.reset_mock()
+            mock_factory_distribution.reset_mock()
+            mock_factory_choice.reset_mock()
 
             # Only `en_PH` factory has provider method `luzon_province`, so there is no
             # need for `random.choice` factory selection logic to run
             fake.luzon_province()
             mock_select_factory.assert_called_with("luzon_province")
-            mock_choices_fn.assert_not_called()
-            mock_random_choice.assert_not_called()
+            mock_factory_distribution.assert_not_called()
+            mock_factory_choice.assert_not_called()
             mock_select_factory.reset_mock()
-            mock_choices_fn.reset_mock()
-            mock_random_choice.reset_mock()
+            mock_factory_distribution.reset_mock()
+            mock_factory_choice.reset_mock()
 
             # Both `en_US` and `ja_JP` factories have provider method `zipcode`
             fake.zipcode()
             mock_select_factory.assert_called_once_with("zipcode")
-            mock_choices_fn.assert_not_called()
-            mock_random_choice.assert_called_once_with(
+            mock_factory_distribution.assert_not_called()
+            mock_factory_choice.assert_called_once_with(
                 [fake["en_US"], fake["ja_JP"]],
             )
-            mock_select_factory.reset_mock()
-            mock_choices_fn.reset_mock()
-            mock_random_choice.reset_mock()
 
-    @patch("faker.proxy.random.choice")
-    @patch("faker.proxy.choices_distribution")
-    def test_multiple_locale_factory_selection_with_weights(self, mock_choices_fn, mock_random_choice):
+    @patch("faker.proxy.Faker._select_factory_choice")
+    @patch("faker.proxy.Faker._select_factory_distribution")
+    def test_multiple_locale_factory_selection_with_weights(self, mock_factory_distribution, mock_factory_choice):
         locale = OrderedDict(
             [
                 ("de_DE", 3),
@@ -286,44 +298,60 @@ class TestFakerProxyClass:
             ]
         )
         fake = Faker(locale)
-        mock_choices_fn.assert_not_called()
-        mock_random_choice.assert_not_called()
+        mock_factory_distribution.assert_not_called()
+        mock_factory_choice.assert_not_called()
 
         # Distribution weights have been specified, so factory selection logic will use
         # `choices_distribution` if multiple factories have the specified provider method
         with patch("faker.proxy.Faker._select_factory", wraps=fake._select_factory) as mock_select_factory:
-
             # All factories for the listed locales have the `name` provider method
             fake.name()
             mock_select_factory.assert_called_once_with("name")
-            mock_choices_fn.assert_called_once_with(fake.factories, fake.weights, length=1)
-            mock_random_choice.assert_not_called()
-            mock_select_factory.reset_mock()
-            mock_choices_fn.reset_mock()
-            mock_random_choice.reset_mock()
+            mock_factory_distribution.assert_called_once_with(fake.factories, fake.weights)
+            mock_factory_choice.assert_not_called()
 
+    @patch("faker.proxy.Faker._select_factory_choice")
+    @patch("faker.proxy.Faker._select_factory_distribution")
+    def test_multiple_locale_factory_selection_single_provider(self, mock_factory_distribution, mock_factory_choice):
+        locale = OrderedDict(
+            [
+                ("de_DE", 3),
+                ("en-US", 2),
+                ("en-PH", 1),
+                ("ja_JP", 5),
+            ]
+        )
+        fake = Faker(locale)
+
+        # Distribution weights have been specified, so factory selection logic will use
+        # `choices_distribution` if multiple factories have the specified provider method
+        with patch("faker.proxy.Faker._select_factory", wraps=fake._select_factory) as mock_select_factory:
             # Only `en_PH` factory has provider method `luzon_province`, so there is no
             # need for `choices_distribution` factory selection logic to run
             fake.luzon_province()
             mock_select_factory.assert_called_once_with("luzon_province")
-            mock_choices_fn.assert_not_called()
-            mock_random_choice.assert_not_called()
-            mock_select_factory.reset_mock()
-            mock_choices_fn.reset_mock()
-            mock_random_choice.reset_mock()
+            mock_factory_distribution.assert_not_called()
+            mock_factory_choice.assert_not_called()
 
+    @patch("faker.proxy.Faker._select_factory_choice")
+    @patch("faker.proxy.Faker._select_factory_distribution")
+    def test_multiple_locale_factory_selection_shared_providers(self, mock_factory_distribution, mock_factory_choice):
+        locale = OrderedDict(
+            [
+                ("de_DE", 3),
+                ("en-US", 2),
+                ("en-PH", 1),
+                ("ja_JP", 5),
+            ]
+        )
+        fake = Faker(locale)
+
+        with patch("faker.proxy.Faker._select_factory", wraps=fake._select_factory) as mock_select_factory:
             # Both `en_US` and `ja_JP` factories have provider method `zipcode`
             fake.zipcode()
             mock_select_factory.assert_called_once_with("zipcode")
-            mock_choices_fn.assert_called_once_with(
-                [fake["en_US"], fake["ja_JP"]],
-                [2, 5],
-                length=1,
-            )
-            mock_random_choice.assert_not_called()
-            mock_select_factory.reset_mock()
-            mock_choices_fn.reset_mock()
-            mock_random_choice.reset_mock()
+            mock_factory_distribution.assert_called_once_with([fake["en_US"], fake["ja_JP"]], [2, 5])
+            mock_factory_choice.assert_not_called()
 
     def test_multiple_locale_factory_selection_unsupported_method(self):
         fake = Faker(["en_US", "en_PH"])
@@ -400,6 +428,7 @@ class TestFakerProxyClass:
                 "_factory_map",
                 "_weights",
                 "_unique_proxy",
+                "_optional_proxy",
             ]
         )
         for factory in fake.factories:
